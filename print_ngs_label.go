@@ -1,21 +1,21 @@
 package main
 
 import (
-  "github.com/garyburd/redigo/redis"
-  "os/exec"
-  "fmt"
-  "log"
   "flag"
+  "fmt"
+  "github.com/garyburd/redigo/redis"
+  "log"
+  "os/exec"
 )
 
 var (
-  hostname string
+  hostname   string
   num_labels int
 )
 
 func init() {
-  flag.StringVar(&hostname,"host","localhost","Redis server hostname")
-  flag.IntVar(&num_labels,"labels",1,"Number of labels to print")
+  flag.StringVar(&hostname, "host", "localhost", "Redis server hostname")
+  flag.IntVar(&num_labels, "labels", 1, "Number of labels to print")
 
   flag.Parse()
 }
@@ -34,17 +34,17 @@ func printLabel(p *redis.Pool, num_ids int) {
   }
   err = lp.Start()
   if err != nil {
-      panic(err)
+    panic(err)
   }
 
-  for i:=0; i < num_ids; i++ {
-    reply, err := redis.String(p.Get().Do("SPOP","ngs_ids_000"))
+  for i := 0; i < num_ids; i++ {
+    reply, err := redis.String(p.Get().Do("SPOP", "ngs_ids_000"))
     if err != nil {
       log.Fatal(err)
     }
-    fmt.Printf("ngs-%s\n",reply)
-    lp_in.Write([]byte(fmt.Sprintf("ngs-%s\n",reply)))
-    go save_used_label(p,reply)
+    fmt.Printf("ngs-%s\n", reply)
+    lp_in.Write([]byte(fmt.Sprintf("ngs-%s\n", reply)))
+    go save_used_label(p, reply)
   }
 
   lp_in.Close()
@@ -53,8 +53,8 @@ func printLabel(p *redis.Pool, num_ids int) {
 }
 
 func main() {
-  p := redis.NewPool(func() (redis.Conn, error) { return redis.Dial("tcp", fmt.Sprintf("%s:6379",hostname)) }, 2)
+  p := redis.NewPool(func() (redis.Conn, error) { return redis.Dial("tcp", fmt.Sprintf("%s:6379", hostname)) }, 2)
   defer p.Close()
 
-  printLabel(p,num_labels)
+  printLabel(p, num_labels)
 }
