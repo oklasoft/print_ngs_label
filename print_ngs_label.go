@@ -2,7 +2,6 @@ package main
 
 import (
   "github.com/garyburd/redigo/redis"
-  "os"
   "os/exec"
   "fmt"
   "log"
@@ -27,13 +26,7 @@ func save_used_label(p *redis.Pool, label string) {
 
 func printLabel(p *redis.Pool, num_ids int) {
 
-  lp := exec.Command("/bin/cat")
-  outfile, err := os.Create("./out.txt")
-  if err != nil {
-      panic(err)
-  }
-  defer outfile.Close()
-  lp.Stdout = outfile
+  lp := exec.Command("/usr/bin/lp")
 
   lp_in, err := lp.StdinPipe()
   if err != nil {
@@ -43,9 +36,9 @@ func printLabel(p *redis.Pool, num_ids int) {
   if err != nil {
       panic(err)
   }
-  
+
   for i:=0; i < num_ids; i++ {
-    reply, err := redis.String(p.Get().Do("srandmember","ngs_ids_000"))
+    reply, err := redis.String(p.Get().Do("SPOP","ngs_ids_000"))
     if err != nil {
       log.Fatal(err)
     }
