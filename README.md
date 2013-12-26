@@ -1,4 +1,4 @@
-pring_ngs_label
+print_ngs_label
 ===============
 
 Quick app to pull &amp; print a label for the NGS lab
