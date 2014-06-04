@@ -20,6 +20,7 @@ import (
   "flag"
   "fmt"
   "github.com/garyburd/redigo/redis"
+  "io"
   "log"
   "os/exec"
 )
@@ -27,11 +28,13 @@ import (
 var (
   hostname   string
   num_labels int
+  skip_print bool
 )
 
 func init() {
   flag.StringVar(&hostname, "host", "localhost", "Redis server hostname")
   flag.IntVar(&num_labels, "labels", 1, "Number of labels to print")
+  flag.BoolVar(&skip_print,"skip-print",false,"Skip the actual printing")
 
   flag.Parse()
 }
@@ -42,15 +45,21 @@ func save_used_label(p *redis.Pool, label string) {
 
 func printLabel(p *redis.Pool, num_ids int) {
 
-  lp := exec.Command("/usr/bin/lp")
+  var lp *exec.Cmd
+  var lp_in io.WriteCloser
 
-  lp_in, err := lp.StdinPipe()
-  if err != nil {
-    panic(err)
-  }
-  err = lp.Start()
-  if err != nil {
-    panic(err)
+  if ! skip_print {
+    lp = exec.Command("/usr/bin/lp")
+
+    var err error
+    lp_in, err = lp.StdinPipe()
+    if err != nil {
+      panic(err)
+    }
+    err = lp.Start()
+    if err != nil {
+      panic(err)
+    }
   }
 
   for i := 0; i < num_ids; i++ {
@@ -59,13 +68,17 @@ func printLabel(p *redis.Pool, num_ids int) {
       log.Fatal(err)
     }
     fmt.Printf("ngs-%s\n", reply)
-    lp_in.Write([]byte(fmt.Sprintf("ngs-%s\n", reply)))
+    if ! skip_print {
+      lp_in.Write([]byte(fmt.Sprintf("ngs-%s\n", reply)))
+    }
     go save_used_label(p, reply)
   }
 
-  lp_in.Close()
+  if ! skip_print {
+    lp_in.Close()
 
-  lp.Wait()
+    lp.Wait()
+  }
 }
 
 func main() {
