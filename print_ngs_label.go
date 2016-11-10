@@ -17,73 +17,77 @@
 package main
 
 import (
-  "flag"
-  "fmt"
-  "github.com/garyburd/redigo/redis"
-  "io"
-  "log"
-  "os/exec"
+	"flag"
+	"fmt"
+	"github.com/garyburd/redigo/redis"
+	"io"
+	"log"
+	"os/exec"
 )
 
 var (
-  hostname   string
-  num_labels int
-  skip_print bool
+	hostname   string
+	num_labels int
+	num_copies int
+	skip_print bool
 )
 
 func init() {
-  flag.StringVar(&hostname, "host", "localhost", "Redis server hostname")
-  flag.IntVar(&num_labels, "labels", 1, "Number of labels to print")
-  flag.BoolVar(&skip_print,"skip-print",false,"Skip the actual printing")
+	flag.StringVar(&hostname, "host", "localhost", "Redis server hostname")
+	flag.IntVar(&num_labels, "labels", 1, "Number of labels to print")
+	flag.IntVar(&num_copies, "copies", 1, "Number of copies to print")
+	flag.BoolVar(&skip_print, "skip-print", false, "Skip the actual printing")
 
-  flag.Parse()
+	flag.Parse()
 }
 
 func save_used_label(p *redis.Pool, label string) {
-  redis.String(p.Get().Do("SADD", "ngs_ids_used_000", label))
+	redis.String(p.Get().Do("SADD", "ngs_ids_used_000", label))
 }
 
-func printLabel(p *redis.Pool, num_ids int) {
+func printLabel(p *redis.Pool, num_ids int, num_copies int) {
 
-  var lp *exec.Cmd
-  var lp_in io.WriteCloser
+	var lp *exec.Cmd
+	var lp_in io.WriteCloser
 
-  if ! skip_print {
-    lp = exec.Command("/usr/bin/lp")
+	if !skip_print {
+		lp = exec.Command("/usr/bin/lp")
 
-    var err error
-    lp_in, err = lp.StdinPipe()
-    if err != nil {
-      panic(err)
-    }
-    err = lp.Start()
-    if err != nil {
-      panic(err)
-    }
-  }
+		var err error
+		lp_in, err = lp.StdinPipe()
+		if err != nil {
+			panic(err)
+		}
+		err = lp.Start()
+		if err != nil {
+			panic(err)
+		}
+	}
 
-  for i := 0; i < num_ids; i++ {
-    reply, err := redis.String(p.Get().Do("SPOP", "ngs_ids_000"))
-    if err != nil {
-      log.Fatal(err)
-    }
-    fmt.Printf("ngs-%s\n", reply)
-    if ! skip_print {
-      lp_in.Write([]byte(fmt.Sprintf("ngs-%s\n", reply)))
-    }
-    go save_used_label(p, reply)
-  }
+	for i := 0; i < num_ids; i++ {
+		reply, err := redis.String(p.Get().Do("SPOP", "ngs_ids_000"))
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("ngs-%s\n", reply)
+		if !skip_print {
+			for c := 0; c < num_copies; c++ {
+				lp_in.Write([]byte(fmt.Sprintf("ngs-%s\n", reply)))
+			}
+		}
+		go save_used_label(p, reply)
+	}
 
-  if ! skip_print {
-    lp_in.Close()
+	if !skip_print {
+		lp_in.Close()
 
-    lp.Wait()
-  }
+		lp.Wait()
+	}
 }
 
 func main() {
-  p := redis.NewPool(func() (redis.Conn, error) { return redis.Dial("tcp", fmt.Sprintf("%s:6379", hostname)) }, 2)
-  defer p.Close()
+	p := redis.NewPool(func() (redis.Conn, error) { return redis.Dial("tcp", fmt.Sprintf("%s:6379", hostname)) }, 2)
+	defer p.Close()
 
-  printLabel(p, num_labels)
+	printLabel(p, num_labels, num_copies)
 }
