@@ -23,13 +23,21 @@ import (
 	"io"
 	"log"
 	"os/exec"
+	"sync"
+	"time"
 )
 
+const Offset = 1480550400
+const Prefix = "cgc"
+
 var (
-	hostname   string
-	num_labels int
-	num_copies int
-	skip_print bool
+	hostname      string
+	num_labels    int
+	num_copies    int
+	skip_print    bool
+	make_clinical bool
+	verbose       bool
+	wg            sync.WaitGroup
 )
 
 func init() {
@@ -37,8 +45,42 @@ func init() {
 	flag.IntVar(&num_labels, "labels", 1, "Number of labels to print")
 	flag.IntVar(&num_copies, "copies", 1, "Number of copies to print")
 	flag.BoolVar(&skip_print, "skip-print", false, "Skip the actual printing")
+	flag.BoolVar(&make_clinical, "make-clinical", false, "For each ngs label also make a clinical label")
+	flag.BoolVar(&verbose, "verbose", false, "Print IDs to STDOUT")
 
 	flag.Parse()
+}
+
+func generateId(p *redis.Pool) string {
+	var id string
+	for r := 0; r < 5; r++ {
+		t := int64(time.Now().UTC().Unix()) - Offset
+		for i := 0; i < 98; i++ {
+			id = fmt.Sprintf("%s%x%02d", Prefix, t, i+1)
+			exists, err := redis.Bool(p.Get().Do("SISMEMBER", "cgc-ids", id))
+			if err != nil {
+				log.Fatal(err)
+			}
+			if !exists {
+				break
+			} else {
+				id = ""
+			}
+		}
+		if "" != id {
+			break
+		} else {
+			time.Sleep(1 * time.Second)
+		}
+	}
+	wg.Add(1)
+	go saveCgcId(p, id)
+	return id
+}
+
+func saveCgcId(p *redis.Pool, id string) {
+	defer wg.Done()
+	redis.String(p.Get().Do("SADD", "cgc-ids", id))
 }
 
 func save_used_label(p *redis.Pool, label string) {
@@ -69,10 +111,22 @@ func printLabel(p *redis.Pool, num_ids int, num_copies int) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("ngs-%s\n", reply)
+		var clinId string
+		if make_clinical {
+			clinId = generateId(p)
+		}
+		if verbose {
+			fmt.Printf("ngs-%s\n", reply)
+			if make_clinical {
+				fmt.Printf("%s\n", clinId)
+			}
+		}
 		if !skip_print {
 			for c := 0; c < num_copies; c++ {
 				lp_in.Write([]byte(fmt.Sprintf("ngs-%s\n", reply)))
+				if make_clinical {
+					lp_in.Write([]byte(fmt.Sprintf("%s\n", clinId)))
+				}
 			}
 		}
 		go save_used_label(p, reply)
@@ -90,4 +144,5 @@ func main() {
 	defer p.Close()
 
 	printLabel(p, num_labels, num_copies)
+	wg.Wait()
 }
