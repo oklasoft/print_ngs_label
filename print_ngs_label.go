@@ -84,6 +84,7 @@ func saveCgcId(p *redis.Pool, id string) {
 }
 
 func save_used_label(p *redis.Pool, label string) {
+	defer wg.Done()
 	redis.String(p.Get().Do("SADD", "ngs_ids_used_000", label))
 }
 
@@ -129,6 +130,7 @@ func printLabel(p *redis.Pool, num_ids int, num_copies int) {
 				}
 			}
 		}
+		wg.Add(1)
 		go save_used_label(p, reply)
 	}
 
